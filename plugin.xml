@@ -1,10 +1,20 @@
-<platform name="ios">
-    <config-file target="config.xml" parent="/*">
-        <feature name="VolumeButtons">
-            <param name="ios-package" value="VolumeButtons" />
-        </feature>
-    </config-file>
-    <source-file src="src/ios/VolumeButtons.h" />
-    <source-file src="src/ios/VolumeButtons.m" />
-    <resource-file src="src/ios/silence.mp3" target="src/ios/silence.mp3" />
-</platform>
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin id="com.benkesmith.volumebuttons" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+    <name>VolumeButtons</name>
+    <description>Cordova Plugin Volume Buttons</description>
+    <license>Apache 2.0</license>
+    <keywords>cordova, volume, button, plugin</keywords>
+    <js-module src="www/volume-buttons.js" name="VolumeButtons">
+        <clobbers target="benkesmith.plugins.volumebuttons" />
+    </js-module>
+    <platform name="ios">
+		<config-file target="config.xml" parent="/*">
+			<feature name="VolumeButtons">
+				<param name="ios-package" value="VolumeButtons" />
+			</feature>
+		</config-file>
+		<source-file src="src/ios/VolumeButtons.h" />
+		<source-file src="src/ios/VolumeButtons.m" />
+		<resource-file src="src/ios/silence.mp3" target="src/ios/silence.mp3" />
+    </platform>
+</plugin>
