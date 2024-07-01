@@ -1,0 +1,10 @@
+<platform name="ios">
+    <config-file target="config.xml" parent="/*">
+        <feature name="VolumeButtons">
+            <param name="ios-package" value="VolumeButtons" />
+        </feature>
+    </config-file>
+    <source-file src="src/ios/VolumeButtons.h" />
+    <source-file src="src/ios/VolumeButtons.m" />
+    <resource-file src="src/ios/silence.mp3" target="src/ios/silence.mp3" />
+</platform>
