@@ -1,15 +1,29 @@
 {
-  "name": "com.benkesmith.volumebuttons",
-  "displayName": "VolumeButtons",
+  "name": "benkesmith-volume-buttons",
   "version": "1.0.0",
-  "description": "A sample Apache Cordova application that responds to the deviceready event.",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "A Cordova plugin to catch volume button presses on iOS.",
+  "cordova": {
+    "id": "com.benkesmith.volumebuttons",
+    "platforms": [
+      "ios"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ragcsalo/benkesmith-volume-buttons.git"
   },
   "keywords": [
-    "ecosystem:cordova"
+    "cordova",
+    "volume",
+    "button",
+    "plugin"
   ],
-  "author": "Apache Cordova Team",
-  "license": "Apache-2.0"
+  "author": "Benke Smith <benke.smith@gmail.com>",
+  "license": "Apache-2.0",
+  "engines": [
+    {
+      "name": "cordova",
+      "version": ">=6.0.0"
+    }
+  ]
 }
