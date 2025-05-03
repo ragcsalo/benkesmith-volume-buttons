@@ -5,7 +5,7 @@
     <license>Apache 2.0</license>
     <keywords>cordova, volume, button, plugin</keywords>
     <js-module src="www/volume-buttons.js" name="VolumeButtons">
-        <clobbers target="benkesmith.plugins.volumebuttons" />
+        <clobbers target="VolumeButtons" />
     </js-module>
     <platform name="ios">
 		<config-file target="config.xml" parent="/*">
