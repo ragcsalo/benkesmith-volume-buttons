@@ -4,7 +4,7 @@
 
 @implementation VolumeButtons {
     MPVolumeView *volumeView;
-    float initialVolume;
+    float previousVolume;
     BOOL volumeButtonPressed;
 }
 
@@ -20,7 +20,7 @@
 
     AVAudioSession *audioSession = [AVAudioSession sharedInstance];
     [audioSession setActive:YES error:nil];
-    initialVolume = audioSession.outputVolume;
+    previousVolume = audioSession.outputVolume;
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(volumeChanged:)
@@ -60,24 +60,35 @@
     NSURL *url = [NSURL fileURLWithPath:path];
 
     AVAudioPlayer *audioPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:nil];
-    audioPlayer.volume = initialVolume;
+    audioPlayer.volume = previousVolume;
     [audioPlayer play];
 }
 
 - (void)volumeChanged:(NSNotification *)notification {
-    NSLog(@"VolumeButtons: Volume change detected");
-    NSDictionary *userInfo = [notification userInfo];
-    NSLog(@"VolumeButtons: UserInfo %@", userInfo);
-    if (!volumeButtonPressed) {
-        volumeButtonPressed = YES;
-        [self resetVolume];
-        volumeButtonPressed = NO;
-        [self sendVolumeButtonPressed];
+    float newVolume = [[[notification userInfo]
+                         objectForKey:@"AVSystemController_AudioVolumeNotificationParameter"] floatValue];
+
+    NSLog(@"VolumeButtons: Volume changed from %.2f to %.2f", previousVolume, newVolume);
+
+    NSString *direction = nil;
+    if (newVolume > previousVolume) {
+        direction = @"up";
+    } else if (newVolume < previousVolume) {
+        direction = @"down";
+    }
+
+    previousVolume = newVolume;
+
+    [self resetVolume];
+
+    if (direction != nil && self.callbackId != nil) {
+        NSLog(@"VolumeButtons: Detected volume %@", direction);
+        CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:direction];
+        [self.commandDelegate sendPluginResult:result callbackId:self.callbackId];
     }
 }
 
 - (void)resetVolume {
-    NSLog(@"VolumeButtons: Resetting volume");
     UISlider *volumeSlider = nil;
     for (UIView *view in volumeView.subviews) {
         if ([view isKindOfClass:[UISlider class]]) {
@@ -86,20 +97,12 @@
         }
     }
     if (volumeSlider != nil) {
-        [volumeSlider setValue:initialVolume animated:NO];
-    } else {
-        NSLog(@"VolumeButtons: Volume slider not found");
+        [volumeSlider setValue:previousVolume animated:NO];
     }
 }
 
 - (void)sendVolumeButtonPressed {
-    NSLog(@"VolumeButtons: Sending volume button press event to JavaScript");
-    if (self.callbackId != nil) {
-        CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
-        [self.commandDelegate sendPluginResult:result callbackId:self.callbackId];
-    } else {
-        NSLog(@"VolumeButtons: Callback ID is nil");
-    }
+    // Deprecated, not used anymore
 }
 
 - (void)onVolumeButtonPressed:(CDVInvokedUrlCommand *)command {
