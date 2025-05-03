@@ -1,5 +1,9 @@
 #import <Cordova/CDV.h>
 
 @interface VolumeButtons : CDVPlugin
-- (void)pluginInitialize;
+
+@property (nonatomic, strong) NSString *callbackId;
+
+- (void)onVolumeButtonPressed:(CDVInvokedUrlCommand *)command;
+
 @end
