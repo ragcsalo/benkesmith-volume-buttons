@@ -6,68 +6,90 @@
     MPVolumeView *volumeView;
     float previousVolume;
     BOOL volumeButtonPressed;
+    AVAudioPlayer *silentPlayer;
 }
 
 - (void)pluginInitialize {
     [super pluginInitialize];
-    
     NSLog(@"VolumeButtons: Initializing plugin");
 
-    volumeView = [[MPVolumeView alloc] initWithFrame:CGRectZero];
-    UIWindow *mainWindow = [self getMainWindow];
-    [mainWindow addSubview:volumeView];
-    volumeView.hidden = YES;
-
+    // 1) Configure and activate Playback audio session
     AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-    [audioSession setActive:YES error:nil];
-    previousVolume = audioSession.outputVolume;
+    NSError *error = nil;
+    [audioSession setCategory:AVAudioSessionCategoryPlayback
+                  withOptions:AVAudioSessionCategoryOptionMixWithOthers
+                        error:&error];
+    if (error) {
+        NSLog(@"VolumeButtons: Audio session category error: %@", error.localizedDescription);
+    }
+    [audioSession setActive:YES error:&error];
+    if (error) {
+        NSLog(@"VolumeButtons: Audio session activation error: %@", error.localizedDescription);
+    }
 
+    // 2) Keep track of current volume
+    previousVolume = audioSession.outputVolume;
+    NSLog(@"VolumeButtons: Starting with initial volume = %.2f", previousVolume);
+
+    // 3) Add an MPVolumeView to suppress the system HUD
+    volumeView = [[MPVolumeView alloc] initWithFrame:CGRectZero];
+    volumeView.alpha = 0.01;  // effectively invisible
+    UIWindow *mainWindow = [self getMainWindow];
+    UIViewController *rootVC = mainWindow.rootViewController;
+    [rootVC.view addSubview:volumeView];
+
+    // 4) Listen for system volume-change notifications
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(volumeChanged:)
                                                  name:@"AVSystemController_SystemVolumeDidChangeNotification"
                                                object:nil];
 
-    [self createInvisibleAudioPlayer];
+    // 5) Start playing silent audio in loop to keep session alive
+    [self createSilentAudioLoop];
 }
 
 - (UIWindow *)getMainWindow {
-    UIWindow *mainWindow = nil;
+    // iOS 13+ multi-scene support
     if (@available(iOS 13.0, *)) {
-        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
-            if (scene.activationState == UISceneActivationStateForegroundActive) {
-                mainWindow = scene.windows.firstObject;
-                break;
-            }
-        }
-    }
-    if (!mainWindow) {
-        if (@available(iOS 15.0, *)) {
-            for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
-                if (scene.activationState == UISceneActivationStateForegroundActive) {
-                    mainWindow = [scene.windows firstObject];
-                    break;
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive &&
+                [scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *ws = (UIWindowScene *)scene;
+                if (ws.windows.count > 0) {
+                    return ws.windows.firstObject;
                 }
             }
-        } else {
-            mainWindow = [UIApplication sharedApplication].windows.firstObject;
         }
     }
-    return mainWindow;
+    // Fallback for earlier iOS
+    UIWindow *win = [UIApplication sharedApplication].keyWindow;
+    if (win) return win;
+    return [UIApplication sharedApplication].windows.firstObject;
 }
 
-- (void)createInvisibleAudioPlayer {
+- (void)createSilentAudioLoop {
     NSString *path = [[NSBundle mainBundle] pathForResource:@"silence" ofType:@"mp3"];
+    NSLog(@"VolumeButtons: Loading silent audio from %@", path);
+    if (!path) {
+        NSLog(@"VolumeButtons: ⚠️ silence.mp3 not found in bundle!");
+        return;
+    }
     NSURL *url = [NSURL fileURLWithPath:path];
-
-    AVAudioPlayer *audioPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:nil];
-    audioPlayer.volume = previousVolume;
-    [audioPlayer play];
+    NSError *err = nil;
+    silentPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:&err];
+    if (err) {
+        NSLog(@"VolumeButtons: Silent player init error: %@", err.localizedDescription);
+        return;
+    }
+    silentPlayer.numberOfLoops = -1;              // loop indefinitely
+    silentPlayer.volume = previousVolume;         // match current volume
+    BOOL ok = [silentPlayer play];
+    NSLog(@"VolumeButtons: silentPlayer play returned %d, isPlaying: %d", ok, silentPlayer.isPlaying);
 }
 
 - (void)volumeChanged:(NSNotification *)notification {
-    float newVolume = [[[notification userInfo]
-                         objectForKey:@"AVSystemController_AudioVolumeNotificationParameter"] floatValue];
-
+    NSDictionary *info = notification.userInfo;
+    float newVolume = [info[@"AVSystemController_AudioVolumeNotificationParameter"] floatValue];
     NSLog(@"VolumeButtons: Volume changed from %.2f to %.2f", previousVolume, newVolume);
 
     NSString *direction = nil;
@@ -76,33 +98,26 @@
     } else if (newVolume < previousVolume) {
         direction = @"down";
     }
-
     previousVolume = newVolume;
 
     [self resetVolume];
 
-    if (direction != nil && self.callbackId != nil) {
+    if (direction && self.callbackId) {
         NSLog(@"VolumeButtons: Detected volume %@", direction);
-        CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:direction];
+        CDVPluginResult *result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                                                   messageAsString:direction];
         [self.commandDelegate sendPluginResult:result callbackId:self.callbackId];
     }
 }
 
 - (void)resetVolume {
-    UISlider *volumeSlider = nil;
-    for (UIView *view in volumeView.subviews) {
-        if ([view isKindOfClass:[UISlider class]]) {
-            volumeSlider = (UISlider *)view;
+    for (UIView *v in volumeView.subviews) {
+        if ([v isKindOfClass:[UISlider class]]) {
+            UISlider *slider = (UISlider *)v;
+            [slider setValue:previousVolume animated:NO];
             break;
         }
     }
-    if (volumeSlider != nil) {
-        [volumeSlider setValue:previousVolume animated:NO];
-    }
-}
-
-- (void)sendVolumeButtonPressed {
-    // Deprecated, not used anymore
 }
 
 - (void)onVolumeButtonPressed:(CDVInvokedUrlCommand *)command {
