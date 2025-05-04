@@ -1,37 +1,37 @@
 # cordova-plugin-volume-buttons
 
-**Detect volume button presses (up/down) on iOS and Android â€“ even when the phone is locked.**  
+Detect volume button presses (up/down) on iOS and Android - even when the phone is locked.
 Perfect for remote-controlling Cordova-based magic apps (or other stealth interactions).
 
-âś¨ Built by @ragcsalo (Benke Smith) to help magicians perform real magic with invisible input.
+Built by @ragcsalo (Benke Smith) to help magicians perform real magic with invisible input.
 
 ---
 
-## âś… Features
+## Features
 
-- Detect **Volume Up / Down** button presses
+- Detect Volume Up / Down button presses
 - Works even when:
-  - App is **in the background**
-  - Phone is **locked**
+  - App is in the background
+  - Phone is locked
 - Three modes:
-  - `aggressive`: blocks the system volume bar and resets volume after each press
-  - `silent`: shows the system volume UI, lets volume change, still detects presses
-  - `none`: disables all volume detection
+  - aggressive: blocks the system volume bar and resets volume after each press
+  - silent: shows the system volume UI, lets volume change, still detects presses
+  - none: disables all volume detection
 - Set a custom baseline volume for resets in aggressive mode
 
 ---
 
-## đź”§ Installation
+## Installation
 
 ```bash
 cordova plugin add https://github.com/ragcsalo/benkesmith-volume-buttons.git
 ```
 
-> Replace `ragcsalo` with your actual GitHub username if hosting privately.
+Replace `ragcsalo` with your actual GitHub username if hosting privately.
 
 ---
 
-## đź“˛ Usage
+## Usage
 
 ### 1. Register a callback:
 
@@ -59,7 +59,7 @@ VolumeButtons.setBaselineVolume(0.55);
 
 ---
 
-## đź“ Example: React to button presses
+## Example: React to button presses
 
 ```javascript
 VolumeButtons.onVolumeButtonPressed(function (direction) {
@@ -73,45 +73,45 @@ VolumeButtons.onVolumeButtonPressed(function (direction) {
 
 ---
 
-## đźŽ› Modes Explained
+## Modes Explained
 
 | Mode        | Volume UI | Volume Changes | Button Detection | Use Case                       |
 |-------------|-----------|----------------|------------------|--------------------------------|
-| `aggressive`| âťŚ Hidden | âťŚ Prevented    | âś… Yes           | Full stealth control (magic)   |
-| `silent`    | âś… Shown  | âś… Allowed      | âś… Yes           | User feedback still visible    |
-| `none`      | âś… Shown  | âś… Allowed      | âťŚ No            | Temporarily disable monitoring |
+| aggressive  | No        | No             | Yes              | Full stealth control (magic)   |
+| silent      | Yes       | Yes            | Yes              | User feedback still visible    |
+| none        | Yes       | Yes            | No               | Temporarily disable monitoring |
 
 ---
 
-## đź“ File Structure
+## File Structure
 
-- `src/ios/VolumeButtons.m` â€“ iOS native code
-- `src/ios/VolumeButtons.h` â€“ Objective-C header
-- `src/android/VolumeButtons.java` â€“ Android native code
-- `www/volume-buttons.js` â€“ JavaScript interface
-- `plugin.xml` â€“ Cordova plugin manifest
-- `src/ios/silence.mp3` â€“ Silent loop to keep audio session alive (iOS only)
+- src/ios/VolumeButtons.m - iOS native code
+- src/ios/VolumeButtons.h - Objective-C header
+- src/android/VolumeButtons.java - Android native code
+- www/volume-buttons.js - JavaScript interface
+- plugin.xml - Cordova plugin manifest
+- src/ios/silence.mp3 - Silent loop to keep audio session alive (iOS only)
 
 ---
 
-## âť— Known Limitations
+## Known Limitations
 
-- **Physical buttons only** â€“ Control Center sliders do not trigger events
+- Physical buttons only - Control Center sliders do not trigger events
 - Cordova must run with microphone/audio permissions (audio session keeps app active)
-- On Android, volume interception is managed via `dispatchKeyEvent`; ensure your app's activity handles key events appropriately
+- On Android, volume interception is managed via dispatchKeyEvent; ensure your app's activity handles key events appropriately
 
 ---
 
-## đź§™ About
+## About
 
-This plugin was crafted by **Benke Smith** ([@ragcsalo](https://github.com/ragcsalo))  
+This plugin was crafted by Benke Smith (@ragcsalo)
 to give magicians invisible input capabilities on iOS and Android devices using volume keys.
 
 Feel free to fork, improve, or raise issues.
 
 ---
 
-## đź’– Like it?
+## Like it?
 
-Consider â­ď¸Ź starring the repo or buying Benke a coffee.  
+Consider starring the repo or buying Benke a coffee.
 And go amaze your audiences.
