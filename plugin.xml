@@ -4,17 +4,32 @@
     <description>Cordova Plugin Volume Buttons</description>
     <license>Apache 2.0</license>
     <keywords>cordova, volume, button, plugin</keywords>
+
+    <!-- Shared JS module -->
     <js-module src="www/volume-buttons.js" name="VolumeButtons">
         <clobbers target="VolumeButtons" />
     </js-module>
+
+    <!-- Android support -->
+    <platform name="android">
+        <config-file target="config.xml" parent="/*">
+            <feature name="VolumeButtons">
+                <param name="android-package" value="com.benkesmith.plugins.VolumeButtons" />
+            </feature>
+        </config-file>
+        <source-file src="src/android/VolumeButtons.java" target-dir="src/com/benkesmith/plugins" />
+    </platform>
+
+    <!-- iOS support -->
     <platform name="ios">
-		<config-file target="config.xml" parent="/*">
-			<feature name="VolumeButtons">
-				<param name="ios-package" value="VolumeButtons" />
-			</feature>
-		</config-file>
-		<source-file src="src/ios/VolumeButtons.h" />
-		<source-file src="src/ios/VolumeButtons.m" />
-		<resource-file src="src/ios/silence.mp3" target="silence.mp3" />
+        <config-file target="config.xml" parent="/*">
+            <feature name="VolumeButtons">
+                <param name="ios-package" value="VolumeButtons" />
+            </feature>
+        </config-file>
+        <source-file src="src/ios/VolumeButtons.h" />
+        <source-file src="src/ios/VolumeButtons.m" />
+        <resource-file src="src/ios/silence.mp3" target="silence.mp3" />
     </platform>
 </plugin>
+
