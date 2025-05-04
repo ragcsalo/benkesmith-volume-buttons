@@ -14,6 +14,7 @@ typedef NS_ENUM(NSInteger, VBMode) {
 // JS‐exposed
 - (void)onVolumeButtonPressed:(CDVInvokedUrlCommand*)command;
 - (void)setMonitoringMode:(CDVInvokedUrlCommand*)command;
+- (void)setBaselineVolume:(CDVInvokedUrlCommand*)command;
 
 @end
 
