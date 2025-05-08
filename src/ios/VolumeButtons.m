@@ -141,32 +141,34 @@
 
 - (void)setBaselineVolume:(CDVInvokedUrlCommand*)command {
     if (command.arguments.count == 0) {
-        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Missing volume"];
+        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                 messageAsString:@"Missing volume"];
         [self.commandDelegate sendPluginResult:err callbackId:command.callbackId];
         return;
     }
 
     float newBaseline = [command.arguments[0] floatValue];
     if (newBaseline < 0.0 || newBaseline > 1.0) {
-        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Volume must be between 0.0 and 1.0"];
+        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                 messageAsString:@"Volume must be between 0.0 and 1.0"];
         [self.commandDelegate sendPluginResult:err callbackId:command.callbackId];
         return;
     }
 
-    baselineVolume = newBaseline;
-    detectionVolume = baselineVolume;
+    baselineVolume  = newBaseline;
+    detectionVolume = newBaseline;
 
     NSLog(@"VolumeButtons: New baseline volume set to %.2f", baselineVolume);
 
-    // Apply immediately if in aggressive mode
-    if (self.currentMode == VBModeAggressive) {
+    // ✅ Immediately apply baseline volume if MPVolumeView is active
+    dispatch_async(dispatch_get_main_queue(), ^{
         for (UIView *v in volumeView.subviews) {
             if ([v isKindOfClass:[UISlider class]]) {
                 [(UISlider*)v setValue:baselineVolume animated:NO];
                 break;
             }
         }
-    }
+    });
 
     CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
     [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
