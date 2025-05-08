@@ -119,10 +119,16 @@ public class VolumeButtons extends CordovaPlugin {
             try {
                 float v = (float) args.getDouble(0);
                 if (v < 0.0f || v > 1.0f) throw new Exception();
+        
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int idx = Math.round(v * max);
+        
                 baselineIndex  = idx;
                 detectionIndex = idx;
+        
+                // ✅ Immediately apply the new volume
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, baselineIndex, 0);
+        
                 cb.success();
             } catch (Exception e) {
                 cb.error("Volume must be between 0.0 and 1.0");
