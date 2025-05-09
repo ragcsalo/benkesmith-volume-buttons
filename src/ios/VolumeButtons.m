@@ -10,6 +10,9 @@
     float          baselineVolume;
     float          detectionVolume;
     NSTimer       *resetTimer;
+    NSInteger pressCount;
+    NSTimeInterval lastPressTime;
+    NSInteger rapidRepeatCount;
 }
 
 #pragma mark – Plugin Init
@@ -66,29 +69,66 @@
     }
 
     float newVol = [change[NSKeyValueChangeNewKey] floatValue];
-    // ignore our reset
     if (newVol == baselineVolume) return;
 
-    // detect direction
     NSString *dir = (newVol > detectionVolume) ? @"up" : @"down";
     detectionVolume = newVol;
     NSLog(@"VolumeButtons: Detected %@", dir);
 
-    // send to JS if not in 'none'
-    if (self.currentMode != VBModeNone && self.callbackId) {
+    // Time-based logic
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970] * 1000;
+    NSTimeInterval delta = now - lastPressTime;
+    lastPressTime = now;
+
+    if (delta > 400) {
+        pressCount = 1;
+        rapidRepeatCount = 0;
+    } else {
+        pressCount++;
+        if (delta < 100) rapidRepeatCount++;
+    }
+
+    [resetTimer invalidate];
+    resetTimer = [NSTimer scheduledTimerWithTimeInterval:0.4
+                                                  target:self
+                                                selector:@selector(finalizePress)
+                                                userInfo:@{@"direction": dir}
+                                                 repeats:NO];
+}
+
+
+- (void)finalizePress {
+    NSString *dir = resetTimer.userInfo[@"direction"];
+    NSString *type;
+    NSInteger count;
+
+    if (rapidRepeatCount >= 2) {
+        type = @"long";
+        count = 1;
+    } else if (pressCount == 1) {
+        type = @"single";
+        count = 1;
+    } else {
+        type = @"multiple";
+        count = pressCount;
+    }
+
+    NSLog(@"VolumeButtons: Confirmed type: %@, count: %ld, direction: %@", type, (long)count, dir);
+
+    if (self.callbackId && self.currentMode != VBModeNone) {
+        NSDictionary *payload = @{
+            @"direction": dir,
+            @"type": type,
+            @"count": @(count)
+        };
         CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
-                                                messageAsString:dir];
+                                           messageAsDictionary:payload];
         [res setKeepCallbackAsBool:YES];
         [self.commandDelegate sendPluginResult:res callbackId:self.callbackId];
     }
 
-    // schedule a single reset back to baseline
-    [resetTimer invalidate];
-    resetTimer = [NSTimer scheduledTimerWithTimeInterval:0.2
-                                                  target:self
-                                                selector:@selector(resetVolume)
-                                                userInfo:nil
-                                                 repeats:NO];
+    pressCount = 0;
+    rapidRepeatCount = 0;
 }
 
 #pragma mark – Volume Reset
