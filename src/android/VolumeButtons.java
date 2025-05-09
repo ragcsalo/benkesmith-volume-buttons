@@ -8,6 +8,12 @@ import android.content.IntentFilter;
 import android.media.AudioManager;
 import android.view.KeyEvent;
 import android.view.View;
+import android.util.Log;
+
+
+enum PressType {
+    UP, DOWN
+}
 
 public class VolumeButtons extends CordovaPlugin {
 
@@ -18,6 +24,8 @@ public class VolumeButtons extends CordovaPlugin {
     private AudioManager audioManager;
     private int baselineIndex;
     private int detectionIndex;
+    private int longPressDetectedCount = 0;
+
 
     // Receiver for background volume-change broadcasts
     private BroadcastReceiver volumeChangeReceiver = new BroadcastReceiver() {
@@ -119,16 +127,16 @@ public class VolumeButtons extends CordovaPlugin {
             try {
                 float v = (float) args.getDouble(0);
                 if (v < 0.0f || v > 1.0f) throw new Exception();
-        
+
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int idx = Math.round(v * max);
-        
+
                 baselineIndex  = idx;
                 detectionIndex = idx;
-        
+
                 // ✅ Immediately apply the new volume
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, baselineIndex, 0);
-        
+
                 cb.success();
             } catch (Exception e) {
                 cb.error("Volume must be between 0.0 and 1.0");
@@ -141,12 +149,12 @@ public class VolumeButtons extends CordovaPlugin {
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                 float currentVol = (float) curr / max;
-        
+
                 if (update) {
                     baselineIndex = curr;
                     detectionIndex = curr;
                 }
-        
+
                 PluginResult result = new PluginResult(PluginResult.Status.OK, currentVol);
                 cb.sendPluginResult(result);
             } catch (Exception e) {
@@ -154,14 +162,101 @@ public class VolumeButtons extends CordovaPlugin {
             }
             return true;
         }
-        
+
         return false;
     }
 
+
+    private static final int DOUBLE_PRESS_MIN = 50;
+    private static final int DOUBLE_PRESS_MAX = 400;
+    private static final int LONG_PRESS_MAX_GAP = 80;
+    private static final int SINGLE_PRESS_DELAY = 420;
+    private static final int LONG_PRESS_IDLE = 120;
+
+    private long lastPressTime = 0;
+    private int pressCount = 0;
+    private PressType lastDirection = null;
+    private android.os.Handler handler = new android.os.Handler();
+    private Runnable pressTimeoutRunnable = null;
+
     private void fireJsEvent(String direction) {
-        PluginResult r = new PluginResult(PluginResult.Status.OK, direction);
-        r.setKeepCallback(true);
-        webView.sendPluginResult(r, callbackId);
+        boolean longPressDetected;
+        PressType current = direction.equals("up") ? PressType.UP : PressType.DOWN;
+        long now = System.currentTimeMillis();
+        long delta = now - lastPressTime;
+
+        boolean isRapidRepeat = delta < 100;
+
+        if (isRapidRepeat) {
+            longPressDetectedCount++;
+        } else {
+            longPressDetectedCount = 0;
+        }
+
+        boolean lastPressWasRapidRepeat = delta < 100;
+
+        Log.d("VolumeButtons", "fireJsEvent: direction=" + direction +
+                ", pressCount=" + pressCount +
+                ", delta=" + delta + "ms");
+
+        if (lastDirection == null || lastDirection != current || delta > DOUBLE_PRESS_MAX) {
+
+            pressCount = 0;
+            Log.d("VolumeButtons", "Reset pressCount due to direction change or idle timeout.");
+        }
+
+        pressCount++;
+        lastPressTime = now;
+        lastDirection = current;
+
+        if (pressTimeoutRunnable != null) {
+            handler.removeCallbacks(pressTimeoutRunnable);
+            Log.d("VolumeButtons", "Cleared previous timeout.");
+        }
+
+        pressTimeoutRunnable = () -> {
+            String type;
+            int count;
+
+            if (longPressDetectedCount >= 2) {
+                type = "long";
+                count = 1;
+            } else if (pressCount == 1) {
+                type = "single";
+                count = 1;
+            } else {
+                type = "multiple";
+                count = pressCount;
+            }
+
+            sendEventToJs(direction, type, count);
+            Log.d("VolumeButtons", "Confirmed press type: " + type + ", count: " + count + ", direction: " + direction);
+
+            pressCount = 0;
+            lastDirection = null;
+        };
+
+        // Always reset the timer to wait for a final 400ms pause before confirming
+        handler.postDelayed(pressTimeoutRunnable, DOUBLE_PRESS_MAX);  // 400ms
+        Log.d("VolumeButtons", "Scheduled classification after pause.");
+    }
+
+
+    private void sendEventToJs(String direction, String type, int count) {
+        if (callbackId == null || "none".equals(mode)) return;
+
+        try {
+            org.json.JSONObject payload = new org.json.JSONObject();
+            payload.put("direction", direction); // "up" or "down"
+            payload.put("type", type);           // "single", "multiple", or "long"
+            payload.put("count", count);         // 1 for single/long, >=2 for multiple
+
+            PluginResult result = new PluginResult(PluginResult.Status.OK, payload);
+            result.setKeepCallback(true);
+            webView.sendPluginResult(result, callbackId);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void resetVolume() {
@@ -172,3 +267,4 @@ public class VolumeButtons extends CordovaPlugin {
         );
     }
 }
+
