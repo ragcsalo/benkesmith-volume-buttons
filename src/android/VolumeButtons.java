@@ -135,6 +135,26 @@ public class VolumeButtons extends CordovaPlugin {
             }
             return true;
         }
+        else if ("getCurrentVolume".equals(action)) {
+            try {
+                boolean update = args.getBoolean(0);
+                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                float currentVol = (float) curr / max;
+        
+                if (update) {
+                    baselineIndex = curr;
+                    detectionIndex = curr;
+                }
+        
+                PluginResult result = new PluginResult(PluginResult.Status.OK, currentVol);
+                cb.sendPluginResult(result);
+            } catch (Exception e) {
+                cb.error("Failed to get volume");
+            }
+            return true;
+        }
+        
         return false;
     }
 
