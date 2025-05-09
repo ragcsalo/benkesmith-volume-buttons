@@ -174,6 +174,25 @@
     [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
 }
 
+- (void)getCurrentVolume:(CDVInvokedUrlCommand*)command {
+    BOOL setAsBaseline = NO;
+    if (command.arguments.count > 0) {
+        setAsBaseline = [command.arguments[0] boolValue];
+    }
+
+    float currentVolume = [[AVAudioSession sharedInstance] outputVolume];
+    NSLog(@"VolumeButtons: Current volume is %.2f", currentVolume);
+
+    if (setAsBaseline) {
+        baselineVolume  = currentVolume;
+        detectionVolume = currentVolume;
+        NSLog(@"VolumeButtons: Baseline volume set to %.2f", baselineVolume);
+    }
+
+    CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                                            messageAsDouble:currentVolume];
+    [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
+}
 
 - (void)updateVolumeViewForMode {
     UIWindow *win = [self getMainWindow];
