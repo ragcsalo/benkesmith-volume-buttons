@@ -9,6 +9,9 @@ var VolumeButtons = {
   },
   setBaselineVolume: function (value, success, failure) {
     exec(success, failure, 'VolumeButtons', 'setBaselineVolume', [value]);
+  },
+  getCurrentVolume: function (setAsBaseline, success, failure) {
+    exec(success, failure, 'VolumeButtons', 'getCurrentVolume', [!!setAsBaseline]);
   }
 };
 
