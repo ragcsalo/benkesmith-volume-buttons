@@ -1,4 +1,3 @@
-
 #import "VolumeButtons.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
@@ -10,6 +9,7 @@
     AVAudioPlayer *silentPlayer;
     float          baselineVolume;
     float          detectionVolume;
+    NSTimer       *resetTimer;
     NSTimeInterval lastEventTime;
 }
 
@@ -48,6 +48,9 @@
     // 6) Default mode
     self.currentMode = VBModeAggressive;
     [self updateVolumeViewForMode];
+    
+    // Initialize timestamp
+    lastEventTime = -1;
 }
 
 - (void)dealloc {
@@ -67,14 +70,14 @@
     }
 
     float newVol = [change[NSKeyValueChangeNewKey] floatValue];
+    // ignore our reset
     if (newVol == baselineVolume) return;
 
-    // Determine direction
+    // detect direction
     NSString *dir = (newVol > detectionVolume) ? @"up" : @"down";
-    if (fabs(newVol - detectionVolume) < 0.01) return;
     detectionVolume = newVol;
     NSLog(@"VolumeButtons: Detected %@", dir);
-
+    
     // Compute delta ms
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970] * 1000;
     NSTimeInterval delta = (lastEventTime < 0) ? 0 : (now - lastEventTime);
@@ -92,10 +95,33 @@
         [self.commandDelegate sendPluginResult:res callbackId:self.callbackId];
     }
 
-    // Reset if in aggressive mode
-    if (self.currentMode == VBModeAggressive) {
-        [self resetVolume];
+    // schedule a single reset back to baseline
+    [resetTimer invalidate];
+    resetTimer = [NSTimer scheduledTimerWithTimeInterval:0.2
+                                                  target:self
+                                                selector:@selector(resetVolume)
+                                                userInfo:nil
+                                                 repeats:NO];
+}
+
+- (void)getCurrentVolume:(CDVInvokedUrlCommand*)command {
+    BOOL setAsBaseline = NO;
+    if (command.arguments.count > 0) {
+        setAsBaseline = [command.arguments[0] boolValue];
     }
+
+    float currentVolume = [[AVAudioSession sharedInstance] outputVolume];
+    NSLog(@"VolumeButtons: Current volume is %.2f", currentVolume);
+
+    if (setAsBaseline) {
+        baselineVolume  = currentVolume;
+        detectionVolume = currentVolume;
+        NSLog(@"VolumeButtons: Baseline volume set to %.2f", baselineVolume);
+    }
+
+    CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
+                                            messageAsDouble:currentVolume];
+    [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
 }
 
 #pragma mark – Volume Reset
@@ -111,8 +137,7 @@
         }
     }
     // restore for next detection cycle
-    // DO NOT reset detectionVolume here — keep tracking actual system level
-
+    detectionVolume = baselineVolume;
 }
 
 #pragma mark – Silent Audio
@@ -149,66 +174,37 @@
 
 - (void)setBaselineVolume:(CDVInvokedUrlCommand*)command {
     if (command.arguments.count == 0) {
-        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                                 messageAsString:@"Missing volume"];
+        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Missing volume"];
         [self.commandDelegate sendPluginResult:err callbackId:command.callbackId];
         return;
     }
 
     float newBaseline = [command.arguments[0] floatValue];
     if (newBaseline < 0.0 || newBaseline > 1.0) {
-        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                                 messageAsString:@"Volume must be between 0.0 and 1.0"];
+        CDVPluginResult *err = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Volume must be between 0.0 and 1.0"];
         [self.commandDelegate sendPluginResult:err callbackId:command.callbackId];
         return;
     }
 
-    baselineVolume  = newBaseline;
-    detectionVolume = newBaseline;
+    baselineVolume = newBaseline;
+    detectionVolume = baselineVolume;
 
     NSLog(@"VolumeButtons: New baseline volume set to %.2f", baselineVolume);
 
-    // ✅ Immediately apply baseline volume if MPVolumeView is active
-    // Capture a weak reference to self
-    __weak VolumeButtons *weakSelf = self;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // Re‐establish a strong reference for the duration of this block
-        __strong VolumeButtons *strongSelf = weakSelf;
-        if (!strongSelf) return;
-
-        // Now use strongSelf explicitly
-        for (UIView *v in strongSelf->volumeView.subviews) {
+    // Apply immediately if in aggressive mode
+    if (self.currentMode == VBModeAggressive) {
+        for (UIView *v in volumeView.subviews) {
             if ([v isKindOfClass:[UISlider class]]) {
-                [(UISlider*)v setValue:strongSelf->baselineVolume animated:NO];
+                [(UISlider*)v setValue:baselineVolume animated:NO];
                 break;
             }
         }
-    });
+    }
 
     CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
     [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
 }
 
-- (void)getCurrentVolume:(CDVInvokedUrlCommand*)command {
-    BOOL setAsBaseline = NO;
-    if (command.arguments.count > 0) {
-        setAsBaseline = [command.arguments[0] boolValue];
-    }
-
-    float currentVolume = [[AVAudioSession sharedInstance] outputVolume];
-    NSLog(@"VolumeButtons: Current volume is %.2f", currentVolume);
-
-    if (setAsBaseline) {
-        baselineVolume  = currentVolume;
-        detectionVolume = currentVolume;
-        NSLog(@"VolumeButtons: Baseline volume set to %.2f", baselineVolume);
-    }
-
-    CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
-                                            messageAsDouble:currentVolume];
-    [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
-}
 
 - (void)updateVolumeViewForMode {
     UIWindow *win = [self getMainWindow];
@@ -246,3 +242,4 @@
 }
 
 @end
+
