@@ -1,3 +1,4 @@
+
 #import "VolumeButtons.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
@@ -9,10 +10,7 @@
     AVAudioPlayer *silentPlayer;
     float          baselineVolume;
     float          detectionVolume;
-    NSTimer       *resetTimer;
-    NSInteger pressCount;
-    NSTimeInterval lastPressTime;
-    NSInteger rapidRepeatCount;
+    NSTimeInterval lastEventTime;
 }
 
 #pragma mark – Plugin Init
@@ -71,64 +69,33 @@
     float newVol = [change[NSKeyValueChangeNewKey] floatValue];
     if (newVol == baselineVolume) return;
 
+    // Determine direction
     NSString *dir = (newVol > detectionVolume) ? @"up" : @"down";
+    if (fabs(newVol - detectionVolume) < 0.01) return;
     detectionVolume = newVol;
     NSLog(@"VolumeButtons: Detected %@", dir);
 
-    // Time-based logic
+    // Compute delta ms
     NSTimeInterval now = [[NSDate date] timeIntervalSince1970] * 1000;
-    NSTimeInterval delta = now - lastPressTime;
-    lastPressTime = now;
+    NSTimeInterval delta = (lastEventTime < 0) ? 0 : (now - lastEventTime);
+    lastEventTime = now;
 
-    if (delta > 400) {
-        pressCount = 1;
-        rapidRepeatCount = 0;
-    } else {
-        pressCount++;
-        if (delta < 100) rapidRepeatCount++;
-    }
-
-    [resetTimer invalidate];
-    resetTimer = [NSTimer scheduledTimerWithTimeInterval:0.4
-                                                  target:self
-                                                selector:@selector(finalizePress)
-                                                userInfo:@{@"direction": dir}
-                                                 repeats:NO];
-}
-
-
-- (void)finalizePress {
-    NSString *dir = resetTimer.userInfo[@"direction"];
-    NSString *type;
-    NSInteger count;
-
-    if (rapidRepeatCount >= 2) {
-        type = @"long";
-        count = 1;
-    } else if (pressCount == 1) {
-        type = @"single";
-        count = 1;
-    } else {
-        type = @"multiple";
-        count = pressCount;
-    }
-
-    NSLog(@"VolumeButtons: Confirmed type: %@, count: %ld, direction: %@", type, (long)count, dir);
-
+    // Send raw event
     if (self.callbackId && self.currentMode != VBModeNone) {
         NSDictionary *payload = @{
             @"direction": dir,
-            @"type": type,
-            @"count": @(count)
+            @"delta":     @(delta)
         };
         CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK
-                                           messageAsDictionary:payload];
+                                              messageAsDictionary:payload];
         [res setKeepCallbackAsBool:YES];
         [self.commandDelegate sendPluginResult:res callbackId:self.callbackId];
     }
 
-    pressCount = 0;
-    rapidRepeatCount = 0;
+    // Reset if in aggressive mode
+    if (self.currentMode == VBModeAggressive) {
+        [self resetVolume];
+    }
 }
 
 #pragma mark – Volume Reset
@@ -144,7 +111,8 @@
         }
     }
     // restore for next detection cycle
-    detectionVolume = baselineVolume;
+    // DO NOT reset detectionVolume here — keep tracking actual system level
+
 }
 
 #pragma mark – Silent Audio
@@ -203,12 +171,12 @@
     // ✅ Immediately apply baseline volume if MPVolumeView is active
     // Capture a weak reference to self
     __weak VolumeButtons *weakSelf = self;
-    
+
     dispatch_async(dispatch_get_main_queue(), ^{
         // Re‐establish a strong reference for the duration of this block
         __strong VolumeButtons *strongSelf = weakSelf;
         if (!strongSelf) return;
-    
+
         // Now use strongSelf explicitly
         for (UIView *v in strongSelf->volumeView.subviews) {
             if ([v isKindOfClass:[UISlider class]]) {
@@ -278,4 +246,3 @@
 }
 
 @end
-
