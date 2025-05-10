@@ -201,10 +201,18 @@
     NSLog(@"VolumeButtons: New baseline volume set to %.2f", baselineVolume);
 
     // ✅ Immediately apply baseline volume if MPVolumeView is active
+    // Capture a weak reference to self
+    __weak VolumeButtons *weakSelf = self;
+    
     dispatch_async(dispatch_get_main_queue(), ^{
-        for (UIView *v in volumeView.subviews) {
+        // Re‐establish a strong reference for the duration of this block
+        __strong VolumeButtons *strongSelf = weakSelf;
+        if (!strongSelf) return;
+    
+        // Now use strongSelf explicitly
+        for (UIView *v in strongSelf->volumeView.subviews) {
             if ([v isKindOfClass:[UISlider class]]) {
-                [(UISlider*)v setValue:baselineVolume animated:NO];
+                [(UISlider*)v setValue:strongSelf->baselineVolume animated:NO];
                 break;
             }
         }
