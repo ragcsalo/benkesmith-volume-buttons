@@ -1,6 +1,9 @@
 package com.benkesmith.plugins;
 
 import org.apache.cordova.*;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -8,12 +11,7 @@ import android.content.IntentFilter;
 import android.media.AudioManager;
 import android.view.KeyEvent;
 import android.view.View;
-import android.util.Log;
 
-
-enum PressType {
-    UP, DOWN
-}
 
 public class VolumeButtons extends CordovaPlugin {
 
@@ -24,7 +22,7 @@ public class VolumeButtons extends CordovaPlugin {
     private AudioManager audioManager;
     private int baselineIndex;
     private int detectionIndex;
-    private int longPressDetectedCount = 0;
+    private long lastEventTime = -1;
 
 
     // Receiver for background volume-change broadcasts
@@ -166,98 +164,27 @@ public class VolumeButtons extends CordovaPlugin {
         return false;
     }
 
-
-    private static final int DOUBLE_PRESS_MIN = 50;
-    private static final int DOUBLE_PRESS_MAX = 400;
-    private static final int LONG_PRESS_MAX_GAP = 80;
-    private static final int SINGLE_PRESS_DELAY = 420;
-    private static final int LONG_PRESS_IDLE = 120;
-
-    private long lastPressTime = 0;
-    private int pressCount = 0;
-    private PressType lastDirection = null;
-    private android.os.Handler handler = new android.os.Handler();
-    private Runnable pressTimeoutRunnable = null;
-
+    /** Emit a raw event { direction, delta } to JS */
     private void fireJsEvent(String direction) {
-        boolean longPressDetected;
-        PressType current = direction.equals("up") ? PressType.UP : PressType.DOWN;
-        long now = System.currentTimeMillis();
-        long delta = now - lastPressTime;
-
-        boolean isRapidRepeat = delta < 100;
-
-        if (isRapidRepeat) {
-            longPressDetectedCount++;
-        } else {
-            longPressDetectedCount = 0;
-        }
-
-        boolean lastPressWasRapidRepeat = delta < 100;
-
-        Log.d("VolumeButtons", "fireJsEvent: direction=" + direction +
-                ", pressCount=" + pressCount +
-                ", delta=" + delta + "ms");
-
-        if (lastDirection == null || lastDirection != current || delta > DOUBLE_PRESS_MAX) {
-
-            pressCount = 0;
-            Log.d("VolumeButtons", "Reset pressCount due to direction change or idle timeout.");
-        }
-
-        pressCount++;
-        lastPressTime = now;
-        lastDirection = current;
-
-        if (pressTimeoutRunnable != null) {
-            handler.removeCallbacks(pressTimeoutRunnable);
-            Log.d("VolumeButtons", "Cleared previous timeout.");
-        }
-
-        pressTimeoutRunnable = () -> {
-            String type;
-            int count;
-
-            if (longPressDetectedCount >= 2) {
-                type = "long";
-                count = 1;
-            } else if (pressCount == 1) {
-                type = "single";
-                count = 1;
-            } else {
-                type = "multiple";
-                count = pressCount;
-            }
-
-            sendEventToJs(direction, type, count);
-            Log.d("VolumeButtons", "Confirmed press type: " + type + ", count: " + count + ", direction: " + direction);
-
-            pressCount = 0;
-            lastDirection = null;
-        };
-
-        // Always reset the timer to wait for a final 400ms pause before confirming
-        handler.postDelayed(pressTimeoutRunnable, DOUBLE_PRESS_MAX);  // 400ms
-        Log.d("VolumeButtons", "Scheduled classification after pause.");
-    }
-
-
-    private void sendEventToJs(String direction, String type, int count) {
         if (callbackId == null || "none".equals(mode)) return;
 
+        long now = System.currentTimeMillis();
+        long delta = (lastEventTime < 0) ? 0 : (now - lastEventTime);
+        lastEventTime = now;
+
         try {
-            org.json.JSONObject payload = new org.json.JSONObject();
-            payload.put("direction", direction); // "up" or "down"
-            payload.put("type", type);           // "single", "multiple", or "long"
-            payload.put("count", count);         // 1 for single/long, >=2 for multiple
+            JSONObject payload = new JSONObject();
+            payload.put("direction", direction);
+            payload.put("delta", delta);
 
             PluginResult result = new PluginResult(PluginResult.Status.OK, payload);
             result.setKeepCallback(true);
             webView.sendPluginResult(result, callbackId);
-        } catch (Exception e) {
+        } catch (JSONException e) {
             e.printStackTrace();
         }
     }
+
 
     private void resetVolume() {
         audioManager.setStreamVolume(
