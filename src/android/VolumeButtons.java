@@ -26,7 +26,7 @@ public class VolumeButtons extends CordovaPlugin {
 
 
     // Receiver for background volume-change broadcasts
-    private BroadcastReceiver volumeChangeReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver volumeChangeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context ctx, Intent intent) {
             if (!ACTION_VOLUME_CHANGED.equals(intent.getAction())) return;
@@ -157,6 +157,56 @@ public class VolumeButtons extends CordovaPlugin {
                 cb.sendPluginResult(result);
             } catch (Exception e) {
                 cb.error("Failed to get volume");
+            }
+            return true;
+        }
+        else if ("setVolume".equals(action)) {
+            try {
+                float level = (float) args.getDouble(0);
+                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int newVol = Math.max(0, Math.min((int) Math.round(level * max), max));
+
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
+                baselineIndex = newVol;
+                detectionIndex = newVol;
+
+                cb.success();
+            } catch (Exception e) {
+                cb.error("Invalid volume value");
+            }
+            return true;
+        }
+        else if ("increaseVolume".equals(action)) {
+            try {
+                float step = (float) args.getDouble(0);
+                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                int newVol = Math.min(max, (int) Math.round(curr + (step * max)));
+
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
+                baselineIndex = newVol;
+                detectionIndex = newVol;
+
+                cb.success();
+            } catch (Exception e) {
+                cb.error("Invalid step value");
+            }
+            return true;
+        }
+        else if ("decreaseVolume".equals(action)) {
+            try {
+                float step = (float) args.getDouble(0);
+                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                int newVol = Math.max(0, (int) Math.round(curr - (step * max)));
+
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
+                baselineIndex = newVol;
+                detectionIndex = newVol;
+
+                cb.success();
+            } catch (Exception e) {
+                cb.error("Invalid step value");
             }
             return true;
         }
