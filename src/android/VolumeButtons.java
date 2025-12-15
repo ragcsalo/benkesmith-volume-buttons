@@ -8,10 +8,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioTrack;
+import android.os.Build;
 import android.view.KeyEvent;
 import android.view.View;
-
 
 public class VolumeButtons extends CordovaPlugin {
 
@@ -24,8 +27,10 @@ public class VolumeButtons extends CordovaPlugin {
     private int detectionIndex;
     private long lastEventTime = -1;
 
+    // Silent Player: Keeps the app "alive" in background
+    private AudioTrack silentTrack;
 
-    // Receiver for background volume-change broadcasts
+    // Receiver for volume-change broadcasts
     private final BroadcastReceiver volumeChangeReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context ctx, Intent intent) {
@@ -34,26 +39,36 @@ public class VolumeButtons extends CordovaPlugin {
             int streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1);
             if (streamType != AudioManager.STREAM_MUSIC) return;
 
-            int oldVol = intent.getIntExtra("android.media.EXTRA_PREV_VOLUME_STREAM_VALUE", -1);
             int newVol = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1);
-            if (oldVol < 0 || newVol < 0 || oldVol == newVol) return;
+            int oldVol = intent.getIntExtra("android.media.EXTRA_PREV_VOLUME_STREAM_VALUE", -1);
 
-            // Ignore the broadcast caused by our own reset in aggressive mode
+            if (oldVol < 0 || newVol < 0) return;
+
+            // In Aggressive Mode: Ignore the broadcast caused by OUR OWN reset
             if ("aggressive".equals(mode) && newVol == baselineIndex) {
                 detectionIndex = baselineIndex;
                 return;
             }
 
-            // Detect direction against the last truly user‐set volume
-            String dir = (newVol > detectionIndex) ? "up" : "down";
-            detectionIndex = newVol;
+            // --- MAGNITUDE CALCULATION ---
+            // Calculate total steps jumped
+            int diff = newVol - detectionIndex;
 
-            // Fire JS callback if enabled
-            if (callbackId != null && !"none".equals(mode)) {
-                fireJsEvent(dir);
+            if ("aggressive".equals(mode)) {
+                diff = newVol - baselineIndex;
             }
 
-            // Snap back if aggressive
+            if (diff != 0 && callbackId != null && !"none".equals(mode)) {
+                String dir = diff > 0 ? "up" : "down";
+                int steps = Math.abs(diff);
+
+                // --- CHANGE: Pass the magnitude directly ---
+                // Instead of firing 5 times, we fire ONCE with volumeChange: 5
+                fireJsEvent(dir, steps);
+            }
+
+            detectionIndex = newVol;
+
             if ("aggressive".equals(mode)) {
                 resetVolume();
             }
@@ -64,15 +79,14 @@ public class VolumeButtons extends CordovaPlugin {
     public void initialize(CordovaInterface cordova, CordovaWebView webView) {
         super.initialize(cordova, webView);
 
-        audioManager = (AudioManager) cordova.getActivity()
-                .getSystemService(Context.AUDIO_SERVICE);
+        Context context = cordova.getActivity().getApplicationContext();
+        audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
 
-        // Initialize baseline & detection indexes
         int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        baselineIndex  = curr;
+        baselineIndex = curr;
         detectionIndex = curr;
 
-        // Foreground: catch volume keys via OnKeyListener
+        // Foreground Handling
         View rootView = webView.getView();
         rootView.setFocusableInTouchMode(true);
         rootView.requestFocus();
@@ -82,24 +96,82 @@ public class VolumeButtons extends CordovaPlugin {
                 return false;
 
             String dir = (keyCode == KeyEvent.KEYCODE_VOLUME_UP) ? "up" : "down";
+
+            // Foreground hardware keys always represent 1 "click" at a time
             if (callbackId != null && !"none".equals(mode)) {
-                fireJsEvent(dir);
+                fireJsEvent(dir, 1);
             }
+
             if ("aggressive".equals(mode)) {
                 resetVolume();
-                return true;  // consume event
+                return true;
             }
-            return false; // allow system handling in silent/none
+            return false;
         });
 
-        // Background: listen for VOLUME_CHANGED broadcasts
         IntentFilter filter = new IntentFilter(ACTION_VOLUME_CHANGED);
-        cordova.getActivity().registerReceiver(volumeChangeReceiver, filter);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(volumeChangeReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else {
+            context.registerReceiver(volumeChangeReceiver, filter);
+        }
+
+        updateMode(this.mode);
+    }
+
+    private void updateMode(String newMode) {
+        this.mode = newMode;
+        if ("aggressive".equals(mode)) {
+            startSilentPlayer();
+        } else {
+            stopSilentPlayer();
+        }
+    }
+
+    private void startSilentPlayer() {
+        if (silentTrack != null) return;
+
+        try {
+            int sampleRate = 44100;
+            int bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+
+            AudioFormat format = new AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .build();
+
+            silentTrack = new AudioTrack(attributes, format, bufferSize, AudioTrack.MODE_STATIC, AudioManager.AUDIO_SESSION_ID_GENERATE);
+
+            byte[] silence = new byte[bufferSize];
+            silentTrack.write(silence, 0, silence.length);
+            silentTrack.setLoopPoints(0, silence.length / 2, -1);
+            silentTrack.play();
+
+        } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    private void stopSilentPlayer() {
+        if (silentTrack != null) {
+            try {
+                silentTrack.stop();
+                silentTrack.release();
+            } catch (Exception ignored) {}
+            silentTrack = null;
+        }
     }
 
     @Override
     public void onDestroy() {
-        cordova.getActivity().unregisterReceiver(volumeChangeReceiver);
+        stopSilentPlayer();
+        try {
+            cordova.getActivity().getApplicationContext().unregisterReceiver(volumeChangeReceiver);
+        } catch (Exception ignored) {}
         super.onDestroy();
     }
 
@@ -114,50 +186,31 @@ public class VolumeButtons extends CordovaPlugin {
         }
         else if ("setMonitoringMode".equals(action)) {
             try {
-                this.mode = args.getString(0);
+                String newMode = args.getString(0);
+                cordova.getActivity().runOnUiThread(() -> updateMode(newMode));
                 cb.success();
-            } catch (Exception e) {
-                cb.error("Invalid mode");
-            }
+            } catch (Exception e) { cb.error("Invalid mode"); }
             return true;
         }
         else if ("setBaselineVolume".equals(action)) {
             try {
                 float v = (float) args.getDouble(0);
-                if (v < 0.0f || v > 1.0f) throw new Exception();
-
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int idx = Math.round(v * max);
-
                 baselineIndex  = idx;
                 detectionIndex = idx;
-
-                // ✅ Immediately apply the new volume
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, baselineIndex, 0);
-
                 cb.success();
-            } catch (Exception e) {
-                cb.error("Volume must be between 0.0 and 1.0");
-            }
+            } catch (Exception e) { cb.error("Error setting baseline"); }
             return true;
         }
         else if ("getCurrentVolume".equals(action)) {
             try {
-                boolean update = args.getBoolean(0);
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                 float currentVol = (float) curr / max;
-
-                if (update) {
-                    baselineIndex = curr;
-                    detectionIndex = curr;
-                }
-
-                PluginResult result = new PluginResult(PluginResult.Status.OK, currentVol);
-                cb.sendPluginResult(result);
-            } catch (Exception e) {
-                cb.error("Failed to get volume");
-            }
+                cb.sendPluginResult(new PluginResult(PluginResult.Status.OK, currentVol));
+            } catch (Exception e) { cb.error("Failed to get volume"); }
             return true;
         }
         else if ("setVolume".equals(action)) {
@@ -165,57 +218,38 @@ public class VolumeButtons extends CordovaPlugin {
                 float level = (float) args.getDouble(0);
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int newVol = Math.max(0, Math.min((int) Math.round(level * max), max));
-
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
                 baselineIndex = newVol;
                 detectionIndex = newVol;
-
                 cb.success();
-            } catch (Exception e) {
-                cb.error("Invalid volume value");
-            }
+            } catch (Exception e) { cb.error("Error"); }
             return true;
         }
-        else if ("increaseVolume".equals(action)) {
+        else if ("increaseVolume".equals(action) || "decreaseVolume".equals(action)) {
             try {
                 float step = (float) args.getDouble(0);
                 int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-                int newVol = Math.min(max, (int) Math.round(curr + (step * max)));
-
+                int direction = "increaseVolume".equals(action) ? 1 : -1;
+                int newVol = Math.max(0, Math.min(max, (int) Math.round(curr + (direction * step * max))));
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
                 baselineIndex = newVol;
                 detectionIndex = newVol;
-
                 cb.success();
-            } catch (Exception e) {
-                cb.error("Invalid step value");
-            }
+            } catch (Exception e) { cb.error("Error"); }
             return true;
         }
-        else if ("decreaseVolume".equals(action)) {
-            try {
-                float step = (float) args.getDouble(0);
-                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-                int newVol = Math.max(0, (int) Math.round(curr - (step * max)));
-
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
-                baselineIndex = newVol;
-                detectionIndex = newVol;
-
-                cb.success();
-            } catch (Exception e) {
-                cb.error("Invalid step value");
-            }
-            return true;
-        }
-
         return false;
     }
 
-    /** Emit a raw event { direction, delta } to JS */
-    private void fireJsEvent(String direction) {
+    private void resetVolume() {
+        try {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, baselineIndex, 0);
+        } catch (SecurityException e) {}
+    }
+
+    // --- UPDATED METHOD SIGNATURE ---
+    private void fireJsEvent(String direction, int volumeChange) {
         if (callbackId == null || "none".equals(mode)) return;
 
         long now = System.currentTimeMillis();
@@ -227,21 +261,18 @@ public class VolumeButtons extends CordovaPlugin {
             payload.put("direction", direction);
             payload.put("delta", delta);
 
+            // New Parameter: How much the volume actually jumped
+            payload.put("volumeChange", volumeChange);
+
             PluginResult result = new PluginResult(PluginResult.Status.OK, payload);
             result.setKeepCallback(true);
-            webView.sendPluginResult(result, callbackId);
+
+            cordova.getActivity().runOnUiThread(() -> {
+                if (webView != null) webView.sendPluginResult(result, callbackId);
+            });
+
         } catch (JSONException e) {
             e.printStackTrace();
         }
     }
-
-
-    private void resetVolume() {
-        audioManager.setStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                baselineIndex,
-                0
-        );
-    }
 }
-
