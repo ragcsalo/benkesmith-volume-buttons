@@ -99,7 +99,7 @@
     if (type == AVAudioSessionInterruptionTypeBegan) {
         NSLog(@"VolumeButtons: Audio Session Interruption Began (Control lost)");
         // Another plugin or phone call took over. We just wait.
-    } 
+    }
     else if (type == AVAudioSessionInterruptionTypeEnded) {
         NSLog(@"VolumeButtons: Audio Session Interruption Ended (Regaining control)");
         NSTimeInterval options = [[info objectForKey:AVAudioSessionInterruptionOptionKey] doubleValue];
@@ -334,6 +334,30 @@
     self.callbackId = command.callbackId;
 }
 
+- (void)regainControl:(CDVInvokedUrlCommand*)command {
+    NSLog(@"VolumeButtons: Manually regaining control...");
+    
+    // 1. Force the Audio Session back to our required state
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    NSError *err = nil;
+    [session setCategory:AVAudioSessionCategoryPlayback
+             withOptions:AVAudioSessionCategoryOptionMixWithOthers
+                   error:&err];
+    
+    // 2. Reactivate the session
+    [session setActive:YES error:&err];
+    
+    // 3. Restart the silent player if it stopped
+    if (silentPlayer && !silentPlayer.isPlaying) {
+        [silentPlayer play];
+    }
+    
+    // 4. Reset the UI (hidden volume slider)
+    [self updateVolumeViewForMode];
+
+    CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
+}
 #pragma mark – Helpers
 
 - (UIWindow*)getMainWindow {
