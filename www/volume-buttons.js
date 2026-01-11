@@ -23,6 +23,10 @@ var VolumeButtons = {
 
   decreaseVolume: function (delta, success, error) {
     exec(success, error, 'VolumeButtons', 'decreaseVolume', [delta]);
+  },
+
+  regainControl: function(success, failure) {
+    exec(success, failure, 'VolumeButtons', 'regainControl', []);
   }
 };
 
