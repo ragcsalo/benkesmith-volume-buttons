@@ -19,33 +19,39 @@
     [super pluginInitialize];
     NSLog(@"VolumeButtons: Initializing plugin");
 
-    // 1) Activate playback session
-    AVAudioSession *session = [AVAudioSession sharedInstance];
-    NSError *err = nil;
-    [session setCategory:AVAudioSessionCategoryPlayback
-             withOptions:AVAudioSessionCategoryOptionMixWithOthers
-                   error:&err];
-    [session setActive:YES error:&err];
-    if (err) NSLog(@"VolumeButtons: Audio session error: %@", err.localizedDescription);
+    // 1) Initialize Session & Observers
+    // We break this out into a method so we can call it again after interruptions
+    [self restoreAudioSession];
 
     // 2) Set up baseline & detection volumes
-    baselineVolume  = session.outputVolume;
+    baselineVolume  = [[AVAudioSession sharedInstance] outputVolume];
     detectionVolume = baselineVolume;
     NSLog(@"VolumeButtons: baselineVolume = %.2f", baselineVolume);
 
     // 3) Add MPVolumeView (we’ll re-add/remove it per mode)
     volumeView = [[MPVolumeView alloc] initWithFrame:CGRectZero];
 
-    // 4) Observe changes
-    [session addObserver:self
+    // 4) Observe Volume changes
+    [[AVAudioSession sharedInstance] addObserver:self
               forKeyPath:@"outputVolume"
                  options:NSKeyValueObservingOptionNew
                  context:NULL];
 
-    // 5) Loop silent audio
+    // 5) Register for Lifecycle & Interruption Notifications (THE FIX)
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(onAudioSessionInterruption:)
+                                                 name:AVAudioSessionInterruptionNotification
+                                               object:[AVAudioSession sharedInstance]];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(onAppDidBecomeActive:)
+                                                 name:UIApplicationDidBecomeActiveNotification
+                                               object:nil];
+
+    // 6) Loop silent audio
     [self createSilentAudioLoop];
 
-    // 6) Default mode
+    // 7) Default mode
     self.currentMode = VBModeAggressive;
     [self updateVolumeViewForMode];
     
@@ -55,6 +61,65 @@
 
 - (void)dealloc {
     [[AVAudioSession sharedInstance] removeObserver:self forKeyPath:@"outputVolume"];
+    [[NSNotificationCenter defaultCenter] removeObserver:self]; // Clean up new observers
+}
+
+#pragma mark – Audio Session Management (New Helpers)
+
+- (void)restoreAudioSession {
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    NSError *err = nil;
+    
+    // We re-apply this category because other plugins (like Media) likely removed the "MixWithOthers" option
+    [session setCategory:AVAudioSessionCategoryPlayback
+             withOptions:AVAudioSessionCategoryOptionMixWithOthers
+                   error:&err];
+    
+    [session setActive:YES error:&err];
+    
+    if (err) NSLog(@"VolumeButtons: Audio session restore error: %@", err.localizedDescription);
+}
+
+- (void)checkAndResumeSilentPlayer {
+    if (self.currentMode == VBModeNone) return;
+    
+    // If player exists but is stopped (due to interruption), restart it
+    if (silentPlayer && !silentPlayer.isPlaying) {
+        NSLog(@"VolumeButtons: Restarting silent player after interruption");
+        [silentPlayer play];
+    }
+}
+
+#pragma mark – Notification Handlers (The Fix)
+
+- (void)onAudioSessionInterruption:(NSNotification *)notification {
+    NSDictionary *info = notification.userInfo;
+    NSUInteger type = [[info objectForKey:AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
+
+    if (type == AVAudioSessionInterruptionTypeBegan) {
+        NSLog(@"VolumeButtons: Audio Session Interruption Began (Control lost)");
+        // Another plugin or phone call took over. We just wait.
+    } 
+    else if (type == AVAudioSessionInterruptionTypeEnded) {
+        NSLog(@"VolumeButtons: Audio Session Interruption Ended (Regaining control)");
+        NSTimeInterval options = [[info objectForKey:AVAudioSessionInterruptionOptionKey] doubleValue];
+        
+        // Always try to restore our session settings
+        [self restoreAudioSession];
+
+        // Resume playing if the OS says we should, or if we just want to force it
+        if (options == AVAudioSessionInterruptionOptionShouldResume || self.currentMode != VBModeNone) {
+            [self checkAndResumeSilentPlayer];
+        }
+    }
+}
+
+- (void)onAppDidBecomeActive:(NSNotification *)notification {
+    // This handles the case you mentioned: switching foreground/background fixes it.
+    // We automate that fix here.
+    NSLog(@"VolumeButtons: App Became Active");
+    [self restoreAudioSession];
+    [self checkAndResumeSilentPlayer];
 }
 
 #pragma mark – KVO Callback
@@ -286,4 +351,3 @@
 }
 
 @end
-
