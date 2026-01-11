@@ -16,5 +16,8 @@ typedef NS_ENUM(NSInteger, VBMode) {
 - (void)setMonitoringMode:(CDVInvokedUrlCommand*)command;
 - (void)setBaselineVolume:(CDVInvokedUrlCommand*)command;
 - (void)getCurrentVolume:(CDVInvokedUrlCommand*)command;
+- (void)setVolume:(CDVInvokedUrlCommand*)command;
+- (void)increaseVolume:(CDVInvokedUrlCommand*)command;
+- (void)decreaseVolume:(CDVInvokedUrlCommand*)command;
 
 @end
