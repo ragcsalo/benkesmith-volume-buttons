@@ -124,6 +124,50 @@
     [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
 }
 
+- (void)applyVolume:(float)value {
+    value = fmaxf(0.0f, fminf(1.0f, value));
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (UIView *v in self->volumeView.subviews) {
+            if ([v isKindOfClass:[UISlider class]]) {
+                UISlider *slider = (UISlider *)v;
+                [slider setValue:value animated:NO];
+                [slider sendActionsForControlEvents:UIControlEventTouchUpInside];
+                break;
+            }
+        }
+        self->baselineVolume = value;
+        self->detectionVolume = value;
+    });
+}
+
+- (void)setVolume:(CDVInvokedUrlCommand*)command {
+    float value = [command.arguments[0] floatValue];
+    [self applyVolume:value];
+
+    CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
+}
+
+
+- (void)increaseVolume:(CDVInvokedUrlCommand*)command {
+    float delta = [command.arguments[0] floatValue];
+    float newVolume = fmin(1.0f, baselineVolume + delta);
+    [self applyVolume:newVolume];
+
+    CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
+}
+
+- (void)decreaseVolume:(CDVInvokedUrlCommand*)command {
+    float delta = [command.arguments[0] floatValue];
+    float newVolume = fmax(0.0f, baselineVolume - delta);
+    [self applyVolume:newVolume];
+
+    CDVPluginResult *res = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    [self.commandDelegate sendPluginResult:res callbackId:command.callbackId];
+}
+
+
 #pragma mark – Volume Reset
 
 - (void)resetVolume {
