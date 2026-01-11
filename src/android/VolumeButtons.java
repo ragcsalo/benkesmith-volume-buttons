@@ -184,6 +184,11 @@ public class VolumeButtons extends CordovaPlugin {
             cb.sendPluginResult(res);
             return true;
         }
+        else if ("regainControl".equals(action)) {
+            cordova.getActivity().runOnUiThread(this::regainControl);
+            cb.success();
+            return true;
+        }
         else if ("setMonitoringMode".equals(action)) {
             try {
                 String newMode = args.getString(0);
@@ -240,6 +245,24 @@ public class VolumeButtons extends CordovaPlugin {
             return true;
         }
         return false;
+    }
+
+    private void regainControl() {
+        // 1. Re-sync internal indices to the current system volume
+        // This prevents the plugin from calculating a huge "diff" if the volume
+        // changed while the plugin was asleep/interrupted.
+        if (audioManager != null) {
+            int curr = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            baselineIndex = curr;
+            detectionIndex = curr;
+        }
+
+        // 2. Restart the silent audio loop if we are in aggressive mode
+        // This is the Android equivalent of "activating the audio session"
+        if ("aggressive".equals(mode)) {
+            stopSilentPlayer();
+            startSilentPlayer();
+        }
     }
 
     private void resetVolume() {
